@@ -1,11 +1,15 @@
 use flutter_rust_bridge::frb;
+use serde_json;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    str::FromStr,
+};
 use taskchampion::{
-    chrono::{DateTime, Utc},
     Operations, Replica, ServerConfig, StorageConfig, Tag,
+    chrono::{DateTime, Utc},
 };
 use uuid::Uuid;
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
-use serde_json;
 
 fn parse_datetime(input: &str) -> Option<DateTime<Utc>> {
     if input.trim().is_empty() {
@@ -42,8 +46,8 @@ fn get_all_tasks(taskdb_dir_path: String) -> Vec<HashMap<String, String>> {
         for (k, v) in value.get_taskmap() {
             if k.contains("tag_") {
                 if let Some(stripped) = k.strip_prefix("tag_") {
-					tags.push_str(stripped);
-					tags.push(' ');
+                    tags.push_str(stripped);
+                    tags.push(' ');
                 }
             } else {
                 map.insert(k.into(), v.into());
@@ -54,6 +58,70 @@ fn get_all_tasks(taskdb_dir_path: String) -> Vec<HashMap<String, String>> {
         vector.push(map);
     }
     vector
+}
+
+fn task_matches_filter(
+    task: &HashMap<String, String>,
+    key: &str,
+    expected: &Option<String>,
+) -> bool {
+    match expected {
+        Some(value) => task.get(key) == Some(value),
+        None => true,
+    }
+}
+
+fn task_matches_tag_filter(task: &HashMap<String, String>, tag_filter: &str) -> bool {
+    let task_tags: HashSet<&str> = task
+        .get("tags")
+        .map(String::as_str)
+        .unwrap_or("")
+        .split_whitespace()
+        .collect();
+
+    for raw_part in tag_filter.split_whitespace() {
+        let (should_exist, tag) = match raw_part.chars().next() {
+            Some('+') => (true, &raw_part[1..]),
+            Some('-') => (false, &raw_part[1..]),
+            _ => (true, raw_part),
+        };
+
+        if tag.is_empty() {
+            continue;
+        }
+
+        if task_tags.contains(tag) != should_exist {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[frb]
+pub fn query_task(
+    taskdb_dir_path: String,
+    uuid: Option<String>,
+    status: Option<String>,
+    tags: Option<String>,
+    project: Option<String>,
+) -> Result<String, taskchampion::Error> {
+    let filtered_tasks: Vec<HashMap<String, String>> = get_all_tasks(taskdb_dir_path)
+        .into_iter()
+        .filter(|task| task_matches_filter(task, "uuid", &uuid))
+        .filter(|task| task_matches_filter(task, "status", &status))
+        .filter(|task| task_matches_filter(task, "project", &project))
+        .filter(|task| {
+            tags.as_deref()
+                .map(|tag_filter| task_matches_tag_filter(task, tag_filter))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    let json = serde_json::to_string(&filtered_tasks)
+        .map_err(|e| taskchampion::Error::Other(anyhow::anyhow!(e)))?;
+
+    Ok(json)
 }
 
 #[frb]
@@ -80,9 +148,9 @@ pub fn delete_task(uuid_st: String, taskdb_dir_path: String) -> i8 {
 
 #[frb]
 pub fn update_task(
-    uuid_st: String,
-    taskdb_dir_path: String,
-    map: HashMap<String, String>,
+	uuid_st: String, 
+	taskdb_dir_path: String, 
+	map: HashMap<String, String>,
 ) -> i8 {
     let taskdb_dir = PathBuf::from(taskdb_dir_path);
     let storage = StorageConfig::OnDisk {
@@ -121,18 +189,18 @@ pub fn update_task(
                     let _ = t.set_priority(value, &mut ops);
                 }
                 "tags" => {
-					let existing_tags: Vec<String> = t
-						.get_taskmap()
-						.iter()
-						.filter_map(|(k, _)| k.strip_prefix("tag_").map(|s| s.to_string()))
-						.collect();
-					for tag_name in existing_tags {
-						println!("removing tag at rust side {}", tag_name);
-						let mut tag = Tag::from_str(&tag_name).unwrap();
-						let _ = t.remove_tag(&mut tag, &mut ops);
-					}
-                    
-					for part in value.split_whitespace() {
+                    let existing_tags: Vec<String> = t
+                        .get_taskmap()
+                        .iter()
+                        .filter_map(|(k, _)| k.strip_prefix("tag_").map(|s| s.to_string()))
+                        .collect();
+                    for tag_name in existing_tags {
+                        println!("removing tag at rust side {}", tag_name);
+                        let mut tag = Tag::from_str(&tag_name).unwrap();
+                        let _ = t.remove_tag(&mut tag, &mut ops);
+                    }
+
+                    for part in value.split_whitespace() {
                         println!("tag at rust side {}", part);
                         let mut tag = Tag::from_str(part).unwrap();
                         let _ = t.add_tag(&mut tag, &mut ops);
@@ -174,43 +242,43 @@ pub fn add_task(taskdb_dir_path: String, map: HashMap<String, String>) -> i8 {
     let mut replica = Replica::new(storage);
     let mut ops = Operations::new();
     if let Some(uuid_str) = map.get("uuid") {
-    let uuid = Uuid::parse_str(&uuid_str).unwrap();
-    let mut t = replica.create_task(uuid, &mut ops).unwrap();
+        let uuid = Uuid::parse_str(&uuid_str).unwrap();
+        let mut t = replica.create_task(uuid, &mut ops).unwrap();
 
-    let _ = t.set_status(taskchampion::Status::Pending, &mut ops);
+        let _ = t.set_status(taskchampion::Status::Pending, &mut ops);
 
-    for (key, value) in map {
-        match key.as_str() {
-            "description" => {
-                let _ = t.set_description(value, &mut ops);
-            }
-            "due" => {
-                let _ = t.set_due(parse_datetime(&value), &mut ops);
-            }
-            "start" => {
-                let _ = t.start(&mut ops);
-            }
-            "wait" => {
-                let _ = t.set_wait(parse_datetime(&value), &mut ops);
-            }
-            "priority" => {
-                let _ = t.set_priority(value, &mut ops);
-            }
-            "tags" => {
-                for part in value.split_whitespace() {
-                    let mut tag = Tag::from_str(part).unwrap();
-                    let _ = t.add_tag(&mut tag, &mut ops);
+        for (key, value) in map {
+            match key.as_str() {
+                "description" => {
+                    let _ = t.set_description(value, &mut ops);
                 }
+                "due" => {
+                    let _ = t.set_due(parse_datetime(&value), &mut ops);
+                }
+                "start" => {
+                    let _ = t.start(&mut ops);
+                }
+                "wait" => {
+                    let _ = t.set_wait(parse_datetime(&value), &mut ops);
+                }
+                "priority" => {
+                    let _ = t.set_priority(value, &mut ops);
+                }
+                "tags" => {
+                    for part in value.split_whitespace() {
+                        let mut tag = Tag::from_str(part).unwrap();
+                        let _ = t.add_tag(&mut tag, &mut ops);
+                    }
+                }
+                "project" => {
+                    let _ = t.set_user_defined_attribute("project", value, &mut ops);
+                }
+                _ => {}
             }
-            "project" => {
-                let _ = t.set_user_defined_attribute("project", value, &mut ops);
-            }
-            _ => {}
         }
+        replica.commit_operations(ops).unwrap();
+        return 0;
     }
-    replica.commit_operations(ops).unwrap();
-    return 0;
-} 
     1
 }
 
