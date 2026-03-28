@@ -310,35 +310,122 @@ pub async fn sync(
     0
 }
 
+#[cfg(test)]
+fn create_test_taskdb() -> (std::path::PathBuf, String) {
+    use std::{env, fs};
+
+    let tmp = env::temp_dir().join(format!("taskdb_test_{}", Uuid::new_v4()));
+    fs::create_dir_all(&tmp).expect("create temp taskdb dir");
+    let taskdb_path = tmp.to_string_lossy().into_owned();
+    (tmp, taskdb_path)
+}
+
 #[test]
 fn test_add_task_with_tags() {
-    use std::{collections::HashMap, env, fs};
-    // create unique temporary directory for taskdb
-    let tmp = env::temp_dir().join(format!("taskdb_test_{}", Uuid::new_v4()));
-    let taskdb_path = tmp.to_string_lossy().into_owned();
-    fs::create_dir_all(&tmp).expect("create temp taskdb dir");
+    use std::{collections::HashMap, fs};
 
-    // prepare task map with tags
+    let (tmp, taskdb_path) = create_test_taskdb();
+
     let mut map: HashMap<String, String> = HashMap::new();
     let uuid = Uuid::new_v4().to_string();
     map.insert("uuid".to_string(), uuid.clone());
     map.insert("description".to_string(), "test task".to_string());
     map.insert("tags".to_string(), "tag1 tag2".to_string());
 
-    // add task
     let res = add_task(taskdb_path.clone(), map);
     assert_eq!(res, 0);
 
-    // read tasks as json and verify tags are present
     let json = get_all_tasks_json(taskdb_path.clone()).expect("get_all_tasks_json");
     let tasks: Vec<HashMap<String, String>> = serde_json::from_str(&json).expect("parse json");
-    let found = tasks.into_iter().find(|m| m.get("uuid").map(|s| s == &uuid).unwrap_or(false));
+    let found = tasks
+        .into_iter()
+        .find(|m| m.get("uuid").map(|s| s == &uuid).unwrap_or(false));
     assert!(found.is_some(), "task with uuid not found");
     let task = found.unwrap();
     let tags = task.get("tags").map(|s| s.as_str()).unwrap_or("");
     assert!(tags.contains("tag1"), "tag1 missing in tags: {}", tags);
     assert!(tags.contains("tag2"), "tag2 missing in tags: {}", tags);
 
-    // cleanup
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn test_query_task_matches_exact_tags() {
+    use std::{collections::HashMap, fs};
+
+    let (tmp, taskdb_path) = create_test_taskdb();
+
+    let task_one_uuid = Uuid::new_v4().to_string();
+    let mut task_one: HashMap<String, String> = HashMap::new();
+    task_one.insert("uuid".to_string(), task_one_uuid.clone());
+    task_one.insert("description".to_string(), "homework task".to_string());
+    task_one.insert("tags".to_string(), "homework urgent".to_string());
+    task_one.insert("project".to_string(), "school".to_string());
+    assert_eq!(add_task(taskdb_path.clone(), task_one), 0);
+
+    let task_two_uuid = Uuid::new_v4().to_string();
+    let mut task_two: HashMap<String, String> = HashMap::new();
+    task_two.insert("uuid".to_string(), task_two_uuid.clone());
+    task_two.insert("description".to_string(), "work task".to_string());
+    task_two.insert("tags".to_string(), "work urgent".to_string());
+    task_two.insert("project".to_string(), "office".to_string());
+    assert_eq!(add_task(taskdb_path.clone(), task_two), 0);
+
+    let json = query_task(
+        taskdb_path.clone(),
+        None,
+        Some("pending".to_string()),
+        Some("+work -homework".to_string()),
+        None,
+    )
+    .expect("query_task");
+    let tasks: Vec<HashMap<String, String>> = serde_json::from_str(&json).expect("parse json");
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].get("uuid"), Some(&task_two_uuid));
+
+    fs::remove_dir_all(&tmp).ok();
+}
+
+#[test]
+fn test_query_task_filters_by_project_and_status() {
+    use std::{collections::HashMap, fs};
+
+    let (tmp, taskdb_path) = create_test_taskdb();
+
+    let alpha_uuid = Uuid::new_v4().to_string();
+    let mut alpha_task: HashMap<String, String> = HashMap::new();
+    alpha_task.insert("uuid".to_string(), alpha_uuid.clone());
+    alpha_task.insert("description".to_string(), "alpha task".to_string());
+    alpha_task.insert("project".to_string(), "alpha".to_string());
+    assert_eq!(add_task(taskdb_path.clone(), alpha_task), 0);
+
+    let beta_uuid = Uuid::new_v4().to_string();
+    let mut beta_task: HashMap<String, String> = HashMap::new();
+    beta_task.insert("uuid".to_string(), beta_uuid);
+    beta_task.insert("description".to_string(), "beta task".to_string());
+    beta_task.insert("project".to_string(), "beta".to_string());
+    assert_eq!(add_task(taskdb_path.clone(), beta_task), 0);
+
+    let mut update_map: HashMap<String, String> = HashMap::new();
+    update_map.insert("status".to_string(), "completed".to_string());
+    assert_eq!(
+        update_task(alpha_uuid.clone(), taskdb_path.clone(), update_map),
+        0
+    );
+
+    let json = query_task(
+        taskdb_path.clone(),
+        None,
+        Some("completed".to_string()),
+        None,
+        Some("alpha".to_string()),
+    )
+    .expect("query_task");
+    let tasks: Vec<HashMap<String, String>> = serde_json::from_str(&json).expect("parse json");
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].get("uuid"), Some(&alpha_uuid));
+
     fs::remove_dir_all(&tmp).ok();
 }
