@@ -105,7 +105,39 @@ class Replica {
       debugPrint("Error fetching from Replica $e");
       return [];
     }
-    return tasks;
+  }
+
+  // Query replica tasks by uuid, status, tags and project
+  static Future<List<TaskForReplica>> queryTasksFromReplica({
+    String? uuid,
+    String? status,
+    String? tags,
+    String? project,
+  }) async {
+    var path = await getReplicaPath();
+
+    try {
+      var res = await queryTask(
+        taskdbDirPath: path,
+        uuid: uuid,
+        status: status,
+        tags: tags,
+        project: project,
+      );
+      return _decodeTasks(res);
+    } catch (e) {
+      debugPrint("Error in queryTasksFromReplica: $e");
+      return [];
+    }
+  }
+
+  static List<TaskForReplica> _decodeTasks(String rawJson) {
+    final decoded = jsonDecode(rawJson) as List<dynamic>;
+    return List<TaskForReplica>.from(
+      decoded.map(
+        (e) => TaskForReplica.fromJson(Map<String, dynamic>.from(e)),
+      ),
+    );
   }
 
   static Future<void> sync() async {
