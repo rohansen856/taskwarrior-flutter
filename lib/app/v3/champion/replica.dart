@@ -59,6 +59,11 @@ class Replica {
     if (newTask.uuid.isEmpty) {
       return "err";
     }
+    final existingTask = await queryTasksFromReplica(uuid: newTask.uuid);
+    if (existingTask.isEmpty) {
+      debugPrint("Replica task not found for update: ${newTask.uuid}");
+      return "err";
+    }
     String tags = "";
     if (newTask.tags != null) {
       tags = newTask.tags!.join(" ");
@@ -83,6 +88,11 @@ class Replica {
 
   static Future<String> deleteTaskFromReplica(String uuid) async {
     var taskdbDirPath = await getReplicaPath();
+    final existingTask = await queryTasksFromReplica(uuid: uuid);
+    if (existingTask.isEmpty) {
+      debugPrint("Replica task not found for delete: $uuid");
+      return "err";
+    }
     try {
       await deleteTask(uuidSt: uuid, taskdbDirPath: taskdbDirPath);
     } catch (e) {
@@ -93,14 +103,11 @@ class Replica {
 
   static Future<List<TaskForReplica>> getAllTasksFromReplica() async {
     var taskdbDirPath = await getReplicaPath();
-    List<TaskForReplica> tasks = [];
     try {
       var res = await getAllTasksJson(taskdbDirPath: taskdbDirPath);
-      var map = jsonDecode(res);
-      debugPrint("Fetched from Replica: $map");
-      tasks = List<TaskForReplica>.from(map
-          .map((e) => TaskForReplica.fromJson(Map<String, dynamic>.from(e))));
-      debugPrint("Parsed from Replica: $tasks");
+      final tasks = _decodeTasks(res);
+      debugPrint("Fetched ${tasks.length} tasks from replica");
+      return tasks;
     } catch (e) {
       debugPrint("Error fetching from Replica $e");
       return [];
