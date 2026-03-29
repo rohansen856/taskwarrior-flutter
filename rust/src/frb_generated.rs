@@ -37,7 +37,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -2049867087;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1153336749;
 
 // Section: executor
 
@@ -146,6 +146,51 @@ fn wire__crate__api__get_all_tasks_json_impl(
                 transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
                     (move || {
                         let output_ok = crate::api::get_all_tasks_json(api_taskdb_dir_path)?;
+                        Ok(output_ok)
+                    })(),
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__query_task_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "query_task",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_taskdb_dir_path = <String>::sse_decode(&mut deserializer);
+            let api_uuid = <Option<String>>::sse_decode(&mut deserializer);
+            let api_status = <Option<String>>::sse_decode(&mut deserializer);
+            let api_tags = <Option<String>>::sse_decode(&mut deserializer);
+            let api_project = <Option<String>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>(
+                    (move || {
+                        let output_ok = crate::api::query_task(
+                            api_taskdb_dir_path,
+                            api_uuid,
+                            api_status,
+                            api_tags,
+                            api_project,
+                        )?;
                         Ok(output_ok)
                     })(),
                 )
@@ -298,6 +343,17 @@ impl SseDecode for Vec<(String, String)> {
     }
 }
 
+impl SseDecode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for (String, String) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -345,8 +401,9 @@ fn pde_ffi_dispatcher_primary_impl(
         1 => wire__crate__api__add_task_impl(port, ptr, rust_vec_len, data_len),
         2 => wire__crate__api__delete_task_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__get_all_tasks_json_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__sync_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__update_task_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__query_task_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__sync_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__update_task_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -409,6 +466,16 @@ impl SseEncode for Vec<(String, String)> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <(String, String)>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<String> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <String>::sse_encode(value, serializer);
         }
     }
 }
