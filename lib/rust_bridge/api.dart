@@ -6,10 +6,23 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `get_all_tasks`, `parse_datetime`
+// These functions are ignored because they are not marked as `pub`: `get_all_tasks`, `parse_datetime`, `task_matches_filter`, `task_matches_tag_filter`
 
 Future<String> getAllTasksJson({required String taskdbDirPath}) =>
     RustLib.instance.api.crateApiGetAllTasksJson(taskdbDirPath: taskdbDirPath);
+
+Future<String> queryTask(
+        {required String taskdbDirPath,
+        String? uuid,
+        String? status,
+        String? tags,
+        String? project}) =>
+    RustLib.instance.api.crateApiQueryTask(
+        taskdbDirPath: taskdbDirPath,
+        uuid: uuid,
+        status: status,
+        tags: tags,
+        project: project);
 
 Future<int> deleteTask(
         {required String uuidSt, required String taskdbDirPath}) =>
